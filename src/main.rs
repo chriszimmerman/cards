@@ -1,22 +1,25 @@
-use bevy::asset::AssetPath;
 use bevy::{math::prelude::*, prelude::*};
 use rand::prelude::*;
 use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use strum_macros::{Display, EnumIter};
 
 fn main() {
-    let mut deck = generate_deck();
-    let mut rng = rand::rng();
-    deck.shuffle(&mut rng);
-    deck.iter().for_each(|card| println!("{:?}", card));
-
     App::new()
         .add_plugins(DefaultPlugins)
+        .insert_resource({
+            let mut rng = rand::rng();
+            let mut deck = Deck {
+                cards: Deck::generate_deck(),
+            };
+            deck.shuffle(&mut rng);
+            deck
+        })
+        .add_systems(Update, mouse_button_input)
         .add_systems(Startup, setup)
         .run();
 }
 
-#[derive(Debug, EnumIter, Clone)]
+#[derive(Debug, EnumIter, Clone, Display)]
 enum Suit {
     Clubs,
     Diamonds,
@@ -24,7 +27,7 @@ enum Suit {
     Spades,
 }
 
-#[derive(Debug, EnumIter, Clone)]
+#[derive(Debug, EnumIter, Clone, Display)]
 enum Rank {
     Two,
     Three,
@@ -48,18 +51,29 @@ struct Card {
     image: String,
 }
 
-fn generate_deck() -> Vec<Card> {
-    let mut deck = Vec::new();
-    for suit in Suit::iter() {
-        for rank in Rank::iter() {
-            deck.push(Card {
-                suit: suit.clone(),
-                rank: rank.clone(),
-                image: get_path(suit.clone(), rank.clone()),
-            })
+#[derive(Debug, Component, Resource)]
+struct Deck {
+    cards: Vec<Card>,
+}
+
+impl Deck {
+    fn generate_deck() -> Vec<Card> {
+        let mut deck = Vec::new();
+        for suit in Suit::iter() {
+            for rank in Rank::iter() {
+                deck.push(Card {
+                    suit: suit.clone(),
+                    rank: rank.clone(),
+                    image: get_path(suit.clone(), rank.clone()),
+                })
+            }
         }
+        deck.into_iter().collect()
     }
-    deck.into_iter().collect()
+
+    fn shuffle(&mut self, rng: &mut impl Rng) {
+        self.cards.shuffle(rng);
+    }
 }
 
 fn get_path(suit: Suit, rank: Rank) -> String {
@@ -90,19 +104,34 @@ fn get_path(suit: Suit, rank: Rank) -> String {
     format!("cards/{}_{}.png", suit, rank)
 }
 
-fn setup(
-    mut commands: Commands,
-    mut _meshes: ResMut<Assets<Mesh>>,
-    mut _materials: ResMut<Assets<ColorMaterial>>,
-    asset_server: Res<AssetServer>,
-) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
 
-    commands.spawn((
-        Sprite {
+    commands.spawn(
+        (Sprite {
             image: asset_server.load("cards/back_1.png"),
+            custom_size: Some(Vec2::new(64., 96.)),
             ..default()
-        },
-        Transform::from_translation(Vec3::new(0., 0., 0.)),
-    ));
+        }),
+    );
+}
+
+fn mouse_button_input(
+    buttons: Res<ButtonInput<MouseButton>>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut deck: ResMut<Deck>,
+) {
+    if buttons.just_released(MouseButton::Left) {
+        let card = deck.cards.pop().unwrap();
+        commands.spawn((
+            Sprite {
+                image: asset_server.load(card.image.clone()),
+                custom_size: Some(Vec2::new(64., 96.)),
+                ..default()
+            },
+            Transform::from_xyz(70. * (52. - deck.cards.len() as f32), 0., 0.),
+        ));
+        println!("{} of {}", card.rank.to_string(), card.suit.to_string());
+    }
 }
