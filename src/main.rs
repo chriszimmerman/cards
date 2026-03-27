@@ -147,6 +147,17 @@ fn mouse_button_input(
         println!("{} of {}", card.rank.to_string(), card.suit.to_string());
         state.hand.push(card);
         state.score = hand_score(state.hand.clone());
+
+        if(state.score > 21){
+            println!("Bust!");
+            state.hand.clear();
+            state.score = 0;
+            state.deck = Deck {
+                cards: Deck::generate_deck(),
+            };
+            let mut rng = rand::rng();
+            state.deck.shuffle(&mut rng);
+        }
         println!("Current score is {}", state.score);
     }
 }
