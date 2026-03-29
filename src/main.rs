@@ -1,4 +1,6 @@
+use bevy::log::tracing_subscriber::fmt;
 use bevy::{math::prelude::*, prelude::*};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 use rand::prelude::*;
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
@@ -6,22 +8,31 @@ use strum_macros::{Display, EnumIter};
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugins(EguiPlugin::default())
         .insert_resource({
             let mut rng = rand::rng();
             let mut deck = Deck {
                 cards: Deck::generate_deck(),
             };
             deck.shuffle(&mut rng);
-            let mut state = GameState {
+            let state = GameState {
                 deck: deck,
                 score: 0,
-                hand: Vec::new(),
+                hand: Hand { cards: Vec::new() },
             };
             state
         })
         .add_systems(Update, mouse_button_input)
+        .add_systems(EguiPrimaryContextPass, display_score)
         .add_systems(Startup, setup)
         .run();
+}
+
+fn display_score(game_state: Res<GameState>, mut contexts: EguiContexts) -> Result {
+    egui::Window::new("Blackjack").show(contexts.ctx_mut()?, |ui| {
+        ui.label(format!("Score: {}", game_state.score));
+    });
+    Ok(())
 }
 
 #[derive(Debug, EnumIter, Clone, Display)]
@@ -62,10 +73,14 @@ struct Deck {
 }
 
 #[derive(Debug, Component, Resource)]
+struct Hand {
+    cards: Vec<Card>,
+}
+#[derive(Debug, Component, Resource)]
 struct GameState {
     deck: Deck,
     score: u32,
-    hand: Vec<Card>,
+    hand: Hand,
 }
 
 impl Deck {
@@ -94,7 +109,6 @@ fn get_path(suit: Suit, rank: Rank) -> String {
         Suit::Clubs => "clubs",
         Suit::Hearts => "hearts",
         Suit::Spades => "spades",
-        _ => panic!("Invalid suit"),
     };
 
     let rank: &str = match rank {
@@ -124,11 +138,20 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             image: asset_server.load("cards/back_1.png"),
             custom_size: Some(Vec2::new(64., 96.)),
             ..default()
-        }),
+        },
+         Transform::from_xyz(-580., 200., 0.),
+        ),
     );
 }
 
+fn clear_hand(hand_query: &Query<(Entity, &Sprite), With<Card>>, commands: &mut Commands) {
+    hand_query
+        .iter()
+        .for_each(|(entity, _)| commands.entity(entity).despawn());
+}
+
 fn mouse_button_input(
+    hand_query: Query<(Entity, &Sprite), With<Card>>,
     buttons: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -136,27 +159,30 @@ fn mouse_button_input(
 ) {
     if buttons.just_released(MouseButton::Left) {
         let card = state.deck.cards.pop().unwrap();
-        commands.spawn((
-            Sprite {
-                image: asset_server.load(card.image.clone()),
-                custom_size: Some(Vec2::new(64., 96.)),
-                ..default()
-            },
-            Transform::from_xyz(70. * (52. - state.deck.cards.len() as f32), 0., 0.),
-        ));
         println!("{} of {}", card.rank.to_string(), card.suit.to_string());
-        state.hand.push(card);
-        state.score = hand_score(state.hand.clone());
+        state.hand.cards.push(card.clone());
+        state.score = hand_score(state.hand.cards.clone());
 
-        if(state.score > 21){
+        if state.score > 21 {
             println!("Bust!");
-            state.hand.clear();
+            state.hand.cards.clear();
             state.score = 0;
             state.deck = Deck {
                 cards: Deck::generate_deck(),
             };
             let mut rng = rand::rng();
             state.deck.shuffle(&mut rng);
+            clear_hand(&hand_query, &mut commands)
+        } else {
+            commands.spawn((
+                Sprite {
+                    image: asset_server.load(card.image.clone()),
+                    custom_size: Some(Vec2::new(64., 96.)),
+                    ..default()
+                },
+                Transform::from_xyz(70. * (52. - state.deck.cards.len() as f32) - 580., 200., 0.),
+                card.clone(),
+            ));
         }
         println!("Current score is {}", state.score);
     }
@@ -179,7 +205,7 @@ fn hand_score(mut hand: Vec<Card>) -> u32 {
             Rank::Four => 4,
             Rank::Three => 3,
             Rank::Two => 2,
-            Rank::Ace => calculate_ace(score)
+            Rank::Ace => calculate_ace(score),
         };
         score += card_score;
     }
@@ -188,9 +214,5 @@ fn hand_score(mut hand: Vec<Card>) -> u32 {
 }
 
 fn calculate_ace(score: u32) -> u32 {
-    if score > 10 {
-        score + 1
-    } else {
-        score + 11
-    }
+    if score > 10 { 1 } else { 11 }
 }
