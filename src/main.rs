@@ -1,6 +1,6 @@
 use bevy::log::tracing_subscriber::fmt;
 use bevy::{math::prelude::*, prelude::*};
-use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, UiRenderOrder, egui};
 use rand::prelude::*;
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
@@ -8,7 +8,13 @@ use strum_macros::{Display, EnumIter};
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(EguiPlugin::default())
+        .add_plugins(EguiPlugin {
+            enable_multipass_for_primary_context: false,
+            ui_render_order: UiRenderOrder::EguiAboveBevyUi,
+            bindless_mode_array_size: None,
+        })
+        .add_systems(Startup, setup)
+        .init_state::<GamePhase>()
         .insert_resource({
             let mut rng = rand::rng();
             let mut deck = Deck {
@@ -22,17 +28,20 @@ fn main() {
             };
             state
         })
-        .add_systems(Update, mouse_button_input)
-        .add_systems(EguiPrimaryContextPass, display_score)
-        .add_systems(Startup, setup)
+        .add_systems(Update, display_score)
+        .add_systems(Update, player.run_if(in_state(GamePhase::Playing)))
+        .add_systems(
+            Update,
+            display_game_over.run_if(in_state(GamePhase::GameOver)),
+        )
         .run();
 }
 
-fn display_score(game_state: Res<GameState>, mut contexts: EguiContexts) -> Result {
-    egui::Window::new("Blackjack").show(contexts.ctx_mut()?, |ui| {
-        ui.label(format!("Score: {}", game_state.score));
-    });
-    Ok(())
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, States, Default)]
+enum GamePhase {
+    #[default]
+    Playing,
+    GameOver,
 }
 
 #[derive(Debug, EnumIter, Clone, Display)]
@@ -133,15 +142,14 @@ fn get_path(suit: Suit, rank: Rank) -> String {
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
 
-    commands.spawn(
-        (Sprite {
+    commands.spawn((
+        Sprite {
             image: asset_server.load("cards/back_1.png"),
             custom_size: Some(Vec2::new(64., 96.)),
             ..default()
         },
-         Transform::from_xyz(-580., 200., 0.),
-        ),
-    );
+        Transform::from_xyz(-590., 120., 0.),
+    ));
 }
 
 fn clear_hand(hand_query: &Query<(Entity, &Sprite), With<Card>>, commands: &mut Commands) {
@@ -150,21 +158,56 @@ fn clear_hand(hand_query: &Query<(Entity, &Sprite), With<Card>>, commands: &mut 
         .for_each(|(entity, _)| commands.entity(entity).despawn());
 }
 
-fn mouse_button_input(
+fn display_score(game_state: Res<GameState>, mut contexts: EguiContexts) -> Result {
+    egui::Window::new("Blackjack").show(contexts.ctx_mut()?, |ui| {
+        ui.label(format!("Score: {}", game_state.score));
+    });
+    Ok(())
+}
+
+fn player(
     hand_query: Query<(Entity, &Sprite), With<Card>>,
-    buttons: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut state: ResMut<GameState>,
-) {
-    if buttons.just_released(MouseButton::Left) {
-        let card = state.deck.cards.pop().unwrap();
-        println!("{} of {}", card.rank.to_string(), card.suit.to_string());
-        state.hand.cards.push(card.clone());
-        state.score = hand_score(state.hand.cards.clone());
+    mut contexts: EguiContexts,
+    mut gamePhase: ResMut<NextState<GamePhase>>,
+) -> Result {
+    egui::Window::new("Play Options").show(contexts.ctx_mut()?, |ui| {
+        if ui.button("Hit").clicked() {
+            let card = state.deck.cards.pop().unwrap();
+            println!("{} of {}", card.rank.to_string(), card.suit.to_string());
+            state.hand.cards.push(card.clone());
+            state.score = hand_score(state.hand.cards.clone());
 
-        if state.score > 21 {
-            println!("Bust!");
+            commands.spawn((
+                Sprite {
+                    image: asset_server.load(card.image.clone()),
+                    custom_size: Some(Vec2::new(64., 96.)),
+                    ..default()
+                },
+                Transform::from_xyz(70. * (52. - state.deck.cards.len() as f32) - 590., 120., 0.),
+                card.clone(),
+            ));
+
+            if state.score > 21 {
+                println!("Bust");
+                gamePhase.set(GamePhase::GameOver);
+            }
+        }
+    });
+    Ok(())
+}
+
+fn display_game_over(
+    mut contexts: EguiContexts,
+    mut state: ResMut<GameState>,
+    hand_query: Query<(Entity, &Sprite), With<Card>>,
+    mut commands: Commands,
+    mut gamePhase: ResMut<NextState<GamePhase>>,
+) -> Result {
+    egui::Window::new("Game Over! Play Again?").show(contexts.ctx_mut()?, |ui| {
+        if ui.button("Play Again").clicked() {
             state.hand.cards.clear();
             state.score = 0;
             state.deck = Deck {
@@ -172,20 +215,12 @@ fn mouse_button_input(
             };
             let mut rng = rand::rng();
             state.deck.shuffle(&mut rng);
-            clear_hand(&hand_query, &mut commands)
-        } else {
-            commands.spawn((
-                Sprite {
-                    image: asset_server.load(card.image.clone()),
-                    custom_size: Some(Vec2::new(64., 96.)),
-                    ..default()
-                },
-                Transform::from_xyz(70. * (52. - state.deck.cards.len() as f32) - 580., 200., 0.),
-                card.clone(),
-            ));
+
+            clear_hand(&hand_query, &mut commands);
+            gamePhase.set(GamePhase::Playing);
         }
-        println!("Current score is {}", state.score);
-    }
+    });
+    Ok(())
 }
 
 fn hand_score(mut hand: Vec<Card>) -> u32 {
