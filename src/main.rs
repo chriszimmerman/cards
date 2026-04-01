@@ -23,13 +23,17 @@ fn main() {
             deck.shuffle(&mut rng);
             let state = GameState {
                 deck: deck,
-                score: 0,
-                hand: Hand { cards: Vec::new() },
+                player_score: 0,
+                cpu_score: 0,
+                player_hand: Hand { cards: Vec::new() },
+                cpu_hand: Hand { cards: Vec::new() },
             };
             state
         })
+        .insert_resource(HandTimer(Timer::from_seconds(1., TimerMode::Repeating)))
         .add_systems(Update, display_score)
-        .add_systems(Update, player.run_if(in_state(GamePhase::Playing)))
+        .add_systems(Update, player.run_if(in_state(GamePhase::Player)))
+        .add_systems(Update, cpu.run_if(in_state(GamePhase::CPU)))
         .add_systems(
             Update,
             display_game_over.run_if(in_state(GamePhase::GameOver)),
@@ -40,7 +44,8 @@ fn main() {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, States, Default)]
 enum GamePhase {
     #[default]
-    Playing,
+    Player,
+    CPU,
     GameOver,
 }
 
@@ -88,9 +93,14 @@ struct Hand {
 #[derive(Debug, Component, Resource)]
 struct GameState {
     deck: Deck,
-    score: u32,
-    hand: Hand,
+    player_score: u32,
+    cpu_score: u32,
+    player_hand: Hand,
+    cpu_hand: Hand,
 }
+
+#[derive(Resource)]
+struct HandTimer(Timer);
 
 impl Deck {
     fn generate_deck() -> Vec<Card> {
@@ -141,15 +151,6 @@ fn get_path(suit: Suit, rank: Rank) -> String {
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
-
-    commands.spawn((
-        Sprite {
-            image: asset_server.load("cards/back_1.png"),
-            custom_size: Some(Vec2::new(64., 96.)),
-            ..default()
-        },
-        Transform::from_xyz(-590., 120., 0.),
-    ));
 }
 
 fn clear_hand(hand_query: &Query<(Entity, &Sprite), With<Card>>, commands: &mut Commands) {
@@ -160,13 +161,13 @@ fn clear_hand(hand_query: &Query<(Entity, &Sprite), With<Card>>, commands: &mut 
 
 fn display_score(game_state: Res<GameState>, mut contexts: EguiContexts) -> Result {
     egui::Window::new("Blackjack").show(contexts.ctx_mut()?, |ui| {
-        ui.label(format!("Score: {}", game_state.score));
+        ui.label(format!("Player Score: {}", game_state.player_score));
+        ui.label(format!("CPU Score: {}", game_state.cpu_score));
     });
     Ok(())
 }
 
 fn player(
-    hand_query: Query<(Entity, &Sprite), With<Card>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut state: ResMut<GameState>,
@@ -177,8 +178,8 @@ fn player(
         if ui.button("Hit").clicked() {
             let card = state.deck.cards.pop().unwrap();
             println!("{} of {}", card.rank.to_string(), card.suit.to_string());
-            state.hand.cards.push(card.clone());
-            state.score = hand_score(state.hand.cards.clone());
+            state.player_hand.cards.push(card.clone());
+            state.player_score = hand_score(state.player_hand.cards.clone());
 
             commands.spawn((
                 Sprite {
@@ -186,16 +187,63 @@ fn player(
                     custom_size: Some(Vec2::new(64., 96.)),
                     ..default()
                 },
-                Transform::from_xyz(70. * (52. - state.deck.cards.len() as f32) - 590., 120., 0.),
+                Transform::from_xyz(
+                    70. * state.player_hand.cards.len() as f32 - 660.,
+                    100.,
+                    0.,
+                ),
                 card.clone(),
             ));
 
-            if state.score > 21 {
-                println!("Bust");
+            if state.player_score > 21 {
                 gamePhase.set(GamePhase::GameOver);
             }
         }
+
+        if ui.button("Stay").clicked() {
+            gamePhase.set(GamePhase::CPU);
+        }
     });
+    Ok(())
+}
+
+fn cpu(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut state: ResMut<GameState>,
+    mut gamePhase: ResMut<NextState<GamePhase>>,
+    mut timer: ResMut<HandTimer>,
+    time: Res<Time>,
+) -> Result {
+    timer.0.tick(time.delta()); //<callout id="first_library_create.pig.timer_delta" />
+    if timer.0.just_finished() {
+        if state.cpu_score < 16 {
+            let card = state.deck.cards.pop().unwrap();
+            println!("{} of {}", card.rank.to_string(), card.suit.to_string());
+            state.cpu_hand.cards.push(card.clone());
+            state.cpu_score = hand_score(state.cpu_hand.cards.clone());
+
+            commands.spawn((
+                Sprite {
+                    image: asset_server.load(card.image.clone()),
+                    custom_size: Some(Vec2::new(64., 96.)),
+                    ..default()
+                },
+                Transform::from_xyz(
+                    70. * state.cpu_hand.cards.len() as f32 - 660.,
+                    0.,
+                    0.,
+                ),
+                card.clone(),
+            ));
+
+            if state.cpu_score > 21 {
+                gamePhase.set(GamePhase::GameOver);
+            }
+        } else {
+            gamePhase.set(GamePhase::GameOver);
+        }
+    }
     Ok(())
 }
 
@@ -206,10 +254,21 @@ fn display_game_over(
     mut commands: Commands,
     mut gamePhase: ResMut<NextState<GamePhase>>,
 ) -> Result {
-    egui::Window::new("Game Over! Play Again?").show(contexts.ctx_mut()?, |ui| {
+    let mut game_over_text = String::new();
+    if state.player_score > 21 || state.cpu_score > state.player_score {
+        game_over_text = "You lose. :( Play again?".to_string()
+    } else if state.cpu_score > 21 || state.player_score > state.cpu_score {
+        game_over_text = "You win! Play again?".to_string()
+    } else {
+        game_over_text = "TIE GAME!? WHAAAAAA? Play again?".to_string()
+    }
+
+    egui::Window::new(game_over_text).show(contexts.ctx_mut()?, |ui| {
         if ui.button("Play Again").clicked() {
-            state.hand.cards.clear();
-            state.score = 0;
+            state.player_hand.cards.clear();
+            state.cpu_hand.cards.clear();
+            state.player_score = 0;
+            state.cpu_score = 0;
             state.deck = Deck {
                 cards: Deck::generate_deck(),
             };
@@ -217,7 +276,7 @@ fn display_game_over(
             state.deck.shuffle(&mut rng);
 
             clear_hand(&hand_query, &mut commands);
-            gamePhase.set(GamePhase::Playing);
+            gamePhase.set(GamePhase::Player);
         }
     });
     Ok(())
