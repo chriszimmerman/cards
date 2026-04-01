@@ -31,7 +31,6 @@ fn main() {
             state
         })
         .insert_resource(HandTimer(Timer::from_seconds(1., TimerMode::Repeating)))
-        .add_systems(Update, display_score)
         .add_systems(Update, player.run_if(in_state(GamePhase::Player)))
         .add_systems(Update, cpu.run_if(in_state(GamePhase::CPU)))
         .add_systems(
@@ -175,6 +174,8 @@ fn player(
     mut gamePhase: ResMut<NextState<GamePhase>>,
 ) -> Result {
     egui::Window::new("Play Options").show(contexts.ctx_mut()?, |ui| {
+        ui.label(format!("Player Score: {}", state.player_score));
+        ui.label(format!("CPU Score: {}", state.cpu_score));
         if ui.button("Hit").clicked() {
             let card = state.deck.cards.pop().unwrap();
             println!("{} of {}", card.rank.to_string(), card.suit.to_string());
@@ -203,6 +204,7 @@ fn player(
         if ui.button("Stay").clicked() {
             gamePhase.set(GamePhase::CPU);
         }
+
     });
     Ok(())
 }
@@ -213,37 +215,43 @@ fn cpu(
     mut state: ResMut<GameState>,
     mut gamePhase: ResMut<NextState<GamePhase>>,
     mut timer: ResMut<HandTimer>,
+    mut contexts: EguiContexts,
     time: Res<Time>,
 ) -> Result {
-    timer.0.tick(time.delta()); //<callout id="first_library_create.pig.timer_delta" />
-    if timer.0.just_finished() {
-        if state.cpu_score < 16 {
-            let card = state.deck.cards.pop().unwrap();
-            println!("{} of {}", card.rank.to_string(), card.suit.to_string());
-            state.cpu_hand.cards.push(card.clone());
-            state.cpu_score = hand_score(state.cpu_hand.cards.clone());
+    egui::Window::new("Play Options").show(contexts.ctx_mut()?, |ui| {
+        ui.label(format!("Player Score: {}", state.player_score));
+        ui.label(format!("CPU Score: {}", state.cpu_score));
 
-            commands.spawn((
-                Sprite {
-                    image: asset_server.load(card.image.clone()),
-                    custom_size: Some(Vec2::new(64., 96.)),
-                    ..default()
-                },
-                Transform::from_xyz(
-                    70. * state.cpu_hand.cards.len() as f32 - 660.,
-                    0.,
-                    0.,
-                ),
-                card.clone(),
-            ));
+        timer.0.tick(time.delta()); //<callout id="first_library_create.pig.timer_delta" />
+        if timer.0.just_finished() {
+            if state.cpu_score < 16 {
+                let card = state.deck.cards.pop().unwrap();
+                println!("{} of {}", card.rank.to_string(), card.suit.to_string());
+                state.cpu_hand.cards.push(card.clone());
+                state.cpu_score = hand_score(state.cpu_hand.cards.clone());
 
-            if state.cpu_score > 21 {
+                commands.spawn((
+                    Sprite {
+                        image: asset_server.load(card.image.clone()),
+                        custom_size: Some(Vec2::new(64., 96.)),
+                        ..default()
+                    },
+                    Transform::from_xyz(
+                        70. * state.cpu_hand.cards.len() as f32 - 660.,
+                        0.,
+                        0.,
+                    ),
+                    card.clone(),
+                ));
+
+                if state.cpu_score > 21 {
+                    gamePhase.set(GamePhase::GameOver);
+                }
+            } else {
                 gamePhase.set(GamePhase::GameOver);
             }
-        } else {
-            gamePhase.set(GamePhase::GameOver);
         }
-    }
+    });
     Ok(())
 }
 
@@ -263,7 +271,7 @@ fn display_game_over(
         game_over_text = "TIE GAME!? WHAAAAAA? Play again?".to_string()
     }
 
-    egui::Window::new(game_over_text).show(contexts.ctx_mut()?, |ui| {
+    egui::Window::new(game_over_text).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0 ,0.0)).show(contexts.ctx_mut()?, |ui| {
         if ui.button("Play Again").clicked() {
             state.player_hand.cards.clear();
             state.cpu_hand.cards.clear();
