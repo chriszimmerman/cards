@@ -1,4 +1,4 @@
-use crate::{Card, Rank};
+use crate::cards::{Card, Rank};
 
 pub fn hand_score(mut hand: Vec<Card>) -> u32 {
     let mut score = 0;
@@ -31,7 +31,7 @@ fn calculate_ace(score: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Card, Rank, Suit};
+    use crate::cards::{Card, Rank, Suit};
     use crate::score::hand_score;
 
     #[test]
@@ -44,7 +44,7 @@ mod tests {
         let card = Card {
             suit: Suit::Clubs,
             rank: Rank::Two,
-            image: String::new()
+            image: String::new(),
         };
         assert_eq!(hand_score(vec![card]), 2, "Single card");
     }
@@ -54,7 +54,7 @@ mod tests {
         let card = Card {
             suit: Suit::Clubs,
             rank: Rank::Nine,
-            image: String::new()
+            image: String::new(),
         };
         assert_eq!(hand_score(vec![card]), 9, "Number nine");
     }
@@ -64,7 +64,7 @@ mod tests {
         let card = Card {
             suit: Suit::Clubs,
             rank: Rank::Jack,
-            image: String::new()
+            image: String::new(),
         };
         assert_eq!(hand_score(vec![card]), 10, "Single face card");
     }
@@ -74,7 +74,7 @@ mod tests {
         let card = Card {
             suit: Suit::Clubs,
             rank: Rank::Ace,
-            image: String::new()
+            image: String::new(),
         };
         assert_eq!(hand_score(vec![card]), 11, "Single ace");
     }
@@ -84,12 +84,12 @@ mod tests {
         let card_1 = Card {
             suit: Suit::Clubs,
             rank: Rank::Seven,
-            image: String::new()
+            image: String::new(),
         };
         let card_2 = Card {
             suit: Suit::Clubs,
             rank: Rank::Four,
-            image: String::new()
+            image: String::new(),
         };
         assert_eq!(hand_score(vec![card_1, card_2]), 11, "Two number cards");
     }
@@ -99,12 +99,12 @@ mod tests {
         let card_1 = Card {
             suit: Suit::Clubs,
             rank: Rank::King,
-            image: String::new()
+            image: String::new(),
         };
         let card_2 = Card {
             suit: Suit::Clubs,
             rank: Rank::Jack,
-            image: String::new()
+            image: String::new(),
         };
         assert_eq!(hand_score(vec![card_1, card_2]), 20, "Two face cards");
     }
@@ -114,14 +114,18 @@ mod tests {
         let card_1 = Card {
             suit: Suit::Clubs,
             rank: Rank::Ace,
-            image: String::new()
+            image: String::new(),
         };
         let card_2 = Card {
             suit: Suit::Clubs,
             rank: Rank::Five,
-            image: String::new()
+            image: String::new(),
         };
-        assert_eq!(hand_score(vec![card_1, card_2]), 16, "Ace and five is sixteen");
+        assert_eq!(
+            hand_score(vec![card_1, card_2]),
+            16,
+            "Ace and five is sixteen"
+        );
     }
 
     #[test]
@@ -129,14 +133,18 @@ mod tests {
         let card_1 = Card {
             suit: Suit::Clubs,
             rank: Rank::Ace,
-            image: String::new()
+            image: String::new(),
         };
         let card_2 = Card {
             suit: Suit::Diamonds,
             rank: Rank::Ace,
-            image: String::new()
+            image: String::new(),
         };
-        assert_eq!(hand_score(vec![card_1, card_2]), 12, "Two aces won't go over 21");
+        assert_eq!(
+            hand_score(vec![card_1, card_2]),
+            12,
+            "Two aces won't go over 21"
+        );
     }
 
     #[test]
@@ -144,19 +152,23 @@ mod tests {
         let card_1 = Card {
             suit: Suit::Clubs,
             rank: Rank::Seven,
-            image: String::new()
+            image: String::new(),
         };
         let card_2 = Card {
             suit: Suit::Diamonds,
             rank: Rank::Ace,
-            image: String::new()
+            image: String::new(),
         };
         let card_3 = Card {
             suit: Suit::Diamonds,
             rank: Rank::Jack,
-            image: String::new()
+            image: String::new(),
         };
-        assert_eq!(hand_score(vec![card_1, card_2, card_3]), 18, "Ace will be worth 11 until other cards add up to over 10");
+        assert_eq!(
+            hand_score(vec![card_1, card_2, card_3]),
+            18,
+            "Ace will be worth 11 until other cards add up to over 10"
+        );
     }
 
     #[test]
@@ -164,23 +176,27 @@ mod tests {
         let card_1 = Card {
             suit: Suit::Clubs,
             rank: Rank::Seven,
-            image: String::new()
+            image: String::new(),
         };
         let card_2 = Card {
             suit: Suit::Diamonds,
             rank: Rank::Ace,
-            image: String::new()
+            image: String::new(),
         };
         let card_3 = Card {
             suit: Suit::Diamonds,
             rank: Rank::Jack,
-            image: String::new()
+            image: String::new(),
         };
         let card_4 = Card {
             suit: Suit::Diamonds,
             rank: Rank::Ace,
-            image: String::new()
+            image: String::new(),
         };
-        assert_eq!(hand_score(vec![card_1, card_2, card_3, card_4]), 19, "Ace will be worth 11 until other cards add up to over 10");
+        assert_eq!(
+            hand_score(vec![card_1, card_2, card_3, card_4]),
+            19,
+            "Ace will be worth 11 until other cards add up to over 10"
+        );
     }
 }
