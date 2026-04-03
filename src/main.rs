@@ -1,6 +1,7 @@
-use bevy::log::tracing_subscriber::fmt;
+pub mod score;
+
 use bevy::{math::prelude::*, prelude::*};
-use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, UiRenderOrder, egui};
+use bevy_egui::{EguiContexts, EguiPlugin, UiRenderOrder, egui};
 use rand::prelude::*;
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
@@ -74,7 +75,7 @@ enum Rank {
 }
 
 #[derive(Debug, Component, Clone)]
-struct Card {
+pub struct Card {
     suit: Suit,
     rank: Rank,
     image: String,
@@ -148,7 +149,7 @@ fn get_path(suit: Suit, rank: Rank) -> String {
     format!("cards/{}_{}.png", suit, rank)
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
 
@@ -158,20 +159,12 @@ fn clear_hand(hand_query: &Query<(Entity, &Sprite), With<Card>>, commands: &mut 
         .for_each(|(entity, _)| commands.entity(entity).despawn());
 }
 
-fn display_score(game_state: Res<GameState>, mut contexts: EguiContexts) -> Result {
-    egui::Window::new("Blackjack").show(contexts.ctx_mut()?, |ui| {
-        ui.label(format!("Player Score: {}", game_state.player_score));
-        ui.label(format!("CPU Score: {}", game_state.cpu_score));
-    });
-    Ok(())
-}
-
 fn player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut state: ResMut<GameState>,
     mut contexts: EguiContexts,
-    mut gamePhase: ResMut<NextState<GamePhase>>,
+    mut game_phase: ResMut<NextState<GamePhase>>,
 ) -> Result {
     egui::Window::new("Play Options").show(contexts.ctx_mut()?, |ui| {
         ui.label(format!("Player Score: {}", state.player_score));
@@ -180,7 +173,7 @@ fn player(
             let card = state.deck.cards.pop().unwrap();
             println!("{} of {}", card.rank.to_string(), card.suit.to_string());
             state.player_hand.cards.push(card.clone());
-            state.player_score = hand_score(state.player_hand.cards.clone());
+            state.player_score = score::hand_score(state.player_hand.cards.clone());
 
             commands.spawn((
                 Sprite {
@@ -197,12 +190,12 @@ fn player(
             ));
 
             if state.player_score > 21 {
-                gamePhase.set(GamePhase::GameOver);
+                game_phase.set(GamePhase::GameOver);
             }
         }
 
         if ui.button("Stay").clicked() {
-            gamePhase.set(GamePhase::CPU);
+            game_phase.set(GamePhase::CPU);
         }
 
     });
@@ -213,7 +206,7 @@ fn cpu(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut state: ResMut<GameState>,
-    mut gamePhase: ResMut<NextState<GamePhase>>,
+    mut game_phase: ResMut<NextState<GamePhase>>,
     mut timer: ResMut<HandTimer>,
     mut contexts: EguiContexts,
     time: Res<Time>,
@@ -228,7 +221,7 @@ fn cpu(
                 let card = state.deck.cards.pop().unwrap();
                 println!("{} of {}", card.rank.to_string(), card.suit.to_string());
                 state.cpu_hand.cards.push(card.clone());
-                state.cpu_score = hand_score(state.cpu_hand.cards.clone());
+                state.cpu_score = score::hand_score(state.cpu_hand.cards.clone());
 
                 commands.spawn((
                     Sprite {
@@ -245,10 +238,10 @@ fn cpu(
                 ));
 
                 if state.cpu_score > 21 {
-                    gamePhase.set(GamePhase::GameOver);
+                    game_phase.set(GamePhase::GameOver);
                 }
             } else {
-                gamePhase.set(GamePhase::GameOver);
+                game_phase.set(GamePhase::GameOver);
             }
         }
     });
@@ -260,9 +253,9 @@ fn display_game_over(
     mut state: ResMut<GameState>,
     hand_query: Query<(Entity, &Sprite), With<Card>>,
     mut commands: Commands,
-    mut gamePhase: ResMut<NextState<GamePhase>>,
+    mut game_phase: ResMut<NextState<GamePhase>>,
 ) -> Result {
-    let mut game_over_text = String::new();
+    let game_over_text;
     if state.player_score > 21 || state.cpu_score > state.player_score {
         game_over_text = "You lose. :( Play again?".to_string()
     } else if state.cpu_score > 21 || state.player_score > state.cpu_score {
@@ -284,37 +277,8 @@ fn display_game_over(
             state.deck.shuffle(&mut rng);
 
             clear_hand(&hand_query, &mut commands);
-            gamePhase.set(GamePhase::Player);
+            game_phase.set(GamePhase::Player);
         }
     });
     Ok(())
-}
-
-fn hand_score(mut hand: Vec<Card>) -> u32 {
-    let mut score = 0;
-    hand.sort_by(|a, b| a.rank.cmp(&b.rank).reverse());
-    for card in hand.iter() {
-        let card_score = match card.rank {
-            Rank::Jack => 10,
-            Rank::Queen => 10,
-            Rank::King => 10,
-            Rank::Ten => 10,
-            Rank::Nine => 9,
-            Rank::Eight => 8,
-            Rank::Seven => 7,
-            Rank::Six => 6,
-            Rank::Five => 5,
-            Rank::Four => 4,
-            Rank::Three => 3,
-            Rank::Two => 2,
-            Rank::Ace => calculate_ace(score),
-        };
-        score += card_score;
-    }
-
-    score
-}
-
-fn calculate_ace(score: u32) -> u32 {
-    if score > 10 { 1 } else { 11 }
 }
