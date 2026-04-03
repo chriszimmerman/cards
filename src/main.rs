@@ -22,7 +22,7 @@ fn main() {
             };
             deck.shuffle(&mut rng);
             let state = GameState {
-                deck: deck,
+                deck,
                 player_score: 0,
                 cpu_score: 0,
                 player_hand: Hand { cards: Vec::new() },
@@ -33,10 +33,7 @@ fn main() {
         .insert_resource(HandTimer(Timer::from_seconds(1., TimerMode::Repeating)))
         .add_systems(Update, player.run_if(in_state(GamePhase::Player)))
         .add_systems(Update, cpu.run_if(in_state(GamePhase::CPU)))
-        .add_systems(
-            Update,
-            game_over.run_if(in_state(GamePhase::GameOver)),
-        )
+        .add_systems(Update, game_over.run_if(in_state(GamePhase::GameOver)))
         .run();
 }
 
@@ -82,7 +79,6 @@ fn player(
         ui.label(format!("CPU Score: {}", state.cpu_score));
         if ui.button("Hit").clicked() {
             let card = state.deck.cards.pop().unwrap();
-            println!("{} of {}", card.rank.to_string(), card.suit.to_string());
             state.player_hand.cards.push(card.clone());
             state.player_score = score::hand_score(state.player_hand.cards.clone());
 
@@ -125,7 +121,6 @@ fn cpu(
         if timer.0.just_finished() {
             if state.cpu_score < 16 {
                 let card = state.deck.cards.pop().unwrap();
-                println!("{} of {}", card.rank.to_string(), card.suit.to_string());
                 state.cpu_hand.cards.push(card.clone());
                 state.cpu_score = score::hand_score(state.cpu_hand.cards.clone());
 
@@ -152,10 +147,10 @@ fn cpu(
 
 fn game_over(
     mut contexts: EguiContexts,
-    mut state: ResMut<GameState>,
+    state: ResMut<GameState>,
     hand_query: Query<(Entity, &Sprite), With<Card>>,
-    mut commands: Commands,
-    mut game_phase: ResMut<NextState<GamePhase>>,
+    commands: Commands,
+    game_phase: ResMut<NextState<GamePhase>>,
 ) -> Result {
     let game_over_text;
     if state.player_score > 21 || state.cpu_score > state.player_score {
@@ -170,19 +165,28 @@ fn game_over(
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .show(contexts.ctx_mut()?, |ui| {
             if ui.button("Play Again").clicked() {
-                state.player_hand.cards.clear();
-                state.cpu_hand.cards.clear();
-                state.player_score = 0;
-                state.cpu_score = 0;
-                state.deck = Deck {
-                    cards: Deck::generate_deck(),
-                };
-                let mut rng = rand::rng();
-                state.deck.shuffle(&mut rng);
-
-                clear_hand(&hand_query, &mut commands);
-                game_phase.set(GamePhase::Player);
+                reset_game(state, hand_query, commands, game_phase);
             }
         });
     Ok(())
+}
+
+fn reset_game(
+    mut state: ResMut<GameState>,
+    hand_query: Query<(Entity, &Sprite), With<Card>>,
+    mut commands: Commands,
+    mut game_phase: ResMut<NextState<GamePhase>>,
+) {
+    state.player_hand.cards.clear();
+    state.cpu_hand.cards.clear();
+    state.player_score = 0;
+    state.cpu_score = 0;
+    state.deck = Deck {
+        cards: Deck::generate_deck(),
+    };
+    let mut rng = rand::rng();
+    state.deck.shuffle(&mut rng);
+
+    clear_hand(&hand_query, &mut commands);
+    game_phase.set(GamePhase::Player);
 }
